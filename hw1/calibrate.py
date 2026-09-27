@@ -1,8 +1,3 @@
-"""Fit theta of the latency and energy equations on the calibration grid.
-
-Reads results/measurements.csv and meta.json, writes results/theta.json with errors per split.
-"""
-
 import argparse
 import json
 from pathlib import Path
