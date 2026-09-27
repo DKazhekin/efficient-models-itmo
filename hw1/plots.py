@@ -26,28 +26,54 @@ def add_marker_legend_entries(ax):
     ax.scatter([], [], facecolor="white", edgecolor="gray", label="measured, validation")
 
 
-def family_figure(frame, column, predict, ylabel, title, x_axes=("S",), scale=1.0):
-    """For each x axis: one predicted curve per value of the other variable, measured points on top."""
-    fig, axes = plt.subplots(1, len(x_axes), figsize=(8 * len(x_axes), 5), squeeze=False)
-    for ax, x in zip(axes[0], x_axes):
-        series = "B" if x == "S" else "S"
-        values = sorted(frame[series].unique())
-        colors = plt.cm.viridis(np.linspace(0, 0.9, len(values)))
-        x_curve = np.geomspace(frame[x].min(), frame[x].max(), 200)
-        for value, color in zip(values, colors):
-            s, b = (x_curve, value) if x == "S" else (value, x_curve)
-            ax.plot(x_curve, predict(s, b) * scale, color=color, label=f"{series} = {value}")
-            points = frame[(frame[series] == value) & frame[column].notna()]
-            draw_points(ax, points[x], points[column] * scale, color, points["is_validation"])
-        add_marker_legend_entries(ax)
-        ax.set(
-            yscale="log",
-            xlabel=AXIS_LABELS[x],
-            ylabel=ylabel,
-            title=f"{title} vs {x} (lines: equation)",
-        )
+def grid_figure(frame, column, predict, x, ylabel, title, scale=1.0):
+    """One small panel per value of the other variable: the equation line and its measured points.
+
+    The panel title shows the mean relative error of the equation on that panel's points.
+    """
+    panel = "B" if x == "S" else "S"
+    values = sorted(frame[panel].unique())
+    ncols = 4
+    nrows = -(-len(values) // ncols)
+    fig, axes = plt.subplots(nrows, ncols, figsize=(3.6 * ncols, 2.8 * nrows), sharex=True)
+    x_curve = np.geomspace(frame[x].min(), frame[x].max(), 200)
+    for ax, value in zip(axes.flat, values):
+        s, b = (x_curve, value) if x == "S" else (value, x_curve)
+        ax.plot(x_curve, predict(s, b) * scale, color="gray")
+        points = frame[(frame[panel] == value) & frame[column].notna()]
+        draw_points(ax, points[x], points[column] * scale, "royalblue", points["is_validation"])
+        s, b = points["S"].to_numpy(float), points["B"].to_numpy(float)
+        error = np.mean(np.abs(predict(s, b) * scale / (points[column] * scale) - 1))
+        ax.set_title(f"{panel} = {value}   error {error:.0%}", fontsize=9)
+        ax.set(yscale="log")
         ax.set_xscale("log", base=2)
-    return fig, axes[0]
+    for ax in axes.flat[len(values) :]:
+        ax.set_visible(False)
+    for ax in axes[-1]:
+        ax.set_xlabel(AXIS_LABELS[x])
+        ax.xaxis.set_tick_params(labelbottom=True)
+    for ax in axes[:, 0]:
+        ax.set_ylabel(ylabel)
+    fig.legend(
+        handles=[
+            plt.Line2D([], [], color="gray", label="equation"),
+            plt.Line2D([], [], marker="o", ls="", color="royalblue", label="measured, calibration"),
+            plt.Line2D(
+                [],
+                [],
+                marker="o",
+                ls="",
+                mfc="white",
+                mec="royalblue",
+                label="measured, validation",
+            ),
+        ],
+        loc="upper center",
+        ncol=3,
+        bbox_to_anchor=(0.5, 1.0),
+    )
+    fig.suptitle(title, y=1.04)
+    return fig
 
 
 def parity_figure(frame, column, predicted, label):
@@ -91,53 +117,50 @@ def main():
     sizes, batches = measured["S"].to_numpy(float), measured["B"].to_numpy(float)
 
     # FlopCounterMode does not count the bias adds of the linear layers
-    fig, _ = family_figure(
+    fig = grid_figure(
         frame,
         "flops_counted",
         lambda s, b: eq.flops(s, b) - (eq.HEAD_HIDDEN + eq.NUM_CLASSES) * b,
-        "GFLOPs per forward pass",
-        "FLOPs (dots: FlopCounterMode)",
+        "S",
+        "GFLOPs",
+        "FLOPs per forward pass: equation vs torch FlopCounterMode",
         scale=1e-9,
     )
     save(fig, out / "flops.png")
 
-    fig, (ax,) = family_figure(
-        frame, "memory", eq.memory, "peak allocated memory (MiB)", "Memory", scale=2**-20
-    )
-    ax.axhline(
-        meta["gpu_total_memory_bytes"] / 2**20, color="red", linestyle="--", label="device memory"
-    )
-    oom = frame[frame["is_oom"]]
-    oom_memory = eq.memory(oom["S"].to_numpy(float), oom["B"].to_numpy(float)) / 2**20
-    ax.scatter(
-        oom["S"],
-        oom_memory,
-        marker="x",
-        color="red",
-        s=50,
-        zorder=4,
-        label="OOM (at predicted value)",
+    all_predicted = eq.memory(frame["S"].to_numpy(float), frame["B"].to_numpy(float))
+    capacity = meta["gpu_total_memory_bytes"]
+    fig = grid_figure(
+        frame,
+        "memory",
+        eq.memory,
+        "S",
+        "memory (MiB)",
+        f"Memory: equation vs max_memory_allocated()   |   OOM measured "
+        f"{int(frame['is_oom'].sum())}, predicted {int((all_predicted > capacity).sum())} "
+        f"(max predicted {all_predicted.max() / 2**30:.1f} GiB, device {capacity / 2**30:.1f} GiB)",
+        scale=2**-20,
     )
     save(fig, out / "memory.png")
 
-    fig, _ = family_figure(
+    fig = grid_figure(
         measured,
         "latency",
         lambda s, b: eq.latency(s, b, theta),
+        "B",
         "latency (ms)",
-        "Latency",
-        x_axes=("B", "S"),
+        "Latency per forward pass",
         scale=1e3,
     )
     save(fig, out / "latency.png")
 
-    fig, _ = family_figure(
+    fig = grid_figure(
         measured.assign(throughput=measured["B"] / measured["latency"]),
         "throughput",
         lambda s, b: b / eq.latency(s, b, theta),
-        "throughput (images / s)",
+        "B",
+        "images / s",
         "Throughput",
-        x_axes=("B",),
     )
     save(fig, out / "throughput.png")
 
@@ -147,21 +170,18 @@ def main():
         out / "latency_parity.png",
     )
 
-    fig, _ = family_figure(
+    fig = grid_figure(
         measured,
         "energy",
         lambda s, b: eq.energy(s, b, theta_energy),
-        "energy per forward pass (J)",
-        "Energy",
-        x_axes=("B", "S"),
+        "B",
+        "energy (J)",
+        "Energy per forward pass (whole GPU)",
     )
     save(fig, out / "energy.png")
 
     predicted = eq.energy(sizes, batches, theta_energy)
-    save(
-        parity_figure(measured, "energy", predicted, "energy (J)"), out / "energy_parity.png"
-    )
-
+    save(parity_figure(measured, "energy", predicted, "energy (J)"), out / "energy_parity.png")
 
 if __name__ == "__main__":
     main()

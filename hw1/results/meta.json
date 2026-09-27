@@ -1,0 +1,23 @@
+{
+  "gpu": "Tesla T4",
+  "gpu_total_memory_bytes": 15637086208,
+  "driver": "580.82.07",
+  "torch": "2.11.0+cu128",
+  "cuda": "12.8",
+  "cudnn": 91900,
+  "python": "3.13.15",
+  "energy_mode": "energy_counter",
+  "seed": 2026,
+  "random_sizes": [
+    48,
+    112,
+    352,
+    400
+  ],
+  "random_batches": [
+    95,
+    98,
+    167
+  ],
+  "copy_bandwidth": 234539512479.2726
+}

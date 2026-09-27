@@ -24,29 +24,3 @@ pytest tests           # CPU-only checks of the equations
 Grid: S ∈ {32, 64, 128, 224, 256, 384, 512} × B ∈ {1, 2, 4, …, 256} is used for calibration; 4
 extra sizes and 3 extra non-power-of-two batches (seed 2026) are validation-only. Configs run in
 random order after a 20 s GPU warm-up, so thermal drift is not correlated with (S, B).
-
-## Equations
-
-Derivation: `derivation.md` / `hw1_handwritten.pdf`.
-
-| Function | Formula |
-|----------|---------|
-| FLOPs | 17 712 · B · S² + 313 700 · B |
-| Memory | 4.18 MB + 188 · B · S² + 3 472 · B bytes (all activations at once, course convention) |
-| Latency | max(t_launch, Σ_ops max(F_op / π, Q_op / β)) |
-| Energy | P_static · T + P_dynamic · T_gpu |
-
-## Results
-
-_Fill from `results/theta.json` after the run._
-
-| | θ | calibration MAPE | validation MAPE |
-|---|---|---|---|
-| FLOPs | – | – (vs FlopCounterMode: exact) | |
-| Memory | – | | |
-| Latency | t_launch, π (β from copy benchmark) | | |
-| Energy | P_static, P_dynamic | | |
-
-## Discussion
-
-_To be written from the measured data._

@@ -11,7 +11,6 @@ CONV_LAYERS = [
 HEAD_HIDDEN = 256
 NUM_CLASSES = 100
 
-
 def ops(image_size, batch):
     """Every kernel of the forward pass: FLOPs, bytes moved, bytes allocated."""
     batch = np.asarray(batch, dtype=float)
